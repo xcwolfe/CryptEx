@@ -9,11 +9,11 @@
 set -euo pipefail
 
 ## these variables will be arguments passed to the pipeline script by the submission script
-oFolder=/cluster/project8/vyp/Humphrey_RNASeq_brain/jack_git/Humphrey_RNASeq_brain/CryptEx
+oFolder="/home/zw529/donglab/pipelines/modules/rnaseq/bin/CryptEx"
 Step2_master=${oFolder}/Step2_master.sh
 
 # R scripts for CryptEx
-Rbin=/share/apps/R/bin/R
+Rbin=$(which R)
 dexseqFinalProcessR=${oFolder}/dexseq/forked_dexseq_pipeline_v2.R
 countPrepareR=${oFolder}/dexseq/forked_counts_prepare_pipeline.R
 deseqFinalProcessR=${oFolder}/dexseq/forked_deseq2_pipeline.R
@@ -126,7 +126,7 @@ if [ "$#" = "0" ]; then break; fi
 done
 
 
-oFolder=/cluster/project8/vyp/Humphrey_RNASeq_brain/jack_git/Humphrey_RNASeq_brain/splice_junction_detection/extended_hunting/
+oFolder="/home/zw529/donglab/pipelines/modules/rnaseq/bin/CryptEx"
 results=${oFolder}/${protein}_${species}
 reference=${oFolder}/reference
 clusterFolder=${results}/cluster
@@ -138,40 +138,38 @@ done
 # Users provide their own GFF file and their own GFF introns file. 
 	# The CryptEx wiki will provide a link to Devon Ryan's intron script to create the GFF introns file.
 
-#if [[ "$gff" == "hardcoded" ]]; then
-	if [[ "$species" == "mouse" ]];then
-	gff_base="/cluster/scratch3/vyp-scratch2/reference_datasets/RNASeq/Mouse/Mus_musculus.GRCm38.82_fixed"
-	elif [[ "$species" == "human" ]];then
-	gff_base="/cluster/scratch3/vyp-scratch2/reference_datasets/RNASeq/Human_hg38/Homo_sapiens.GRCh38.82_fixed"
-	fi
-#fi
+# Set base reference directory
+ref_dir="/home/zw529/donglab/references/genome/Homo_sapiens/UCSC/hg38/Annotation/gencode"
 
-#if [[ "$annotation_file" == "hardcoded" ]];then
-	if [[ "$species" == "mouse" ]];then
-	annotation_file=/cluster/project8/vyp/vincent/Software/RNASeq_pipeline/bundle/mouse/biomart/biomart_annotations_mouse.tab
-	elif [[ "$species" == "human" ]];then
-	 annotation_file=/cluster/project8/vyp/vincent/Software/RNASeq_pipeline/bundle/human_hg38/biomart/biomart_annotations_human.tab
-	fi
-#fi
+# Set GFF base prefix using Gencode v49
+gff_base="${ref_dir}/gencode.v49.annotation"
 
+# Biomart annotations table used down-stream for DEXSeq/DESeq2 
+# (Pointing to the gene/transcript metadata tables located in your STAR folder)
+annotation_file="/home/zw529/donglab/references/genome/Homo_sapiens/UCSC/hg38/Sequence/STAR/geneInfo.tab"
+
+# Construct the required CryptEx GFF files
 intron_GFF=${gff_base}_introns_only.gff
 exon_GFF=${gff_base}_exons_only.gff
 
 # create intron_GFF and exon_GFF from the supplied GFF file. 
 
 
+# The Intron GFF, created from the exon GFF using an R script written by Devon Ryan is to be used as a BED file.
+# Point directly to your pre-generated human hg38 intron BED
+intron_BED="/home/zw529/donglab/references/genome/Homo_sapiens/UCSC/hg38/Sequence/STAR/introns.sorted.bed"
+intron_tweaked_GFF=${oFolder}/reference/human_introns_for_HTseq.gff
 
-
-#The Intron GFF, created from the exon GFF using an R script written by Devon Ryan is to be used as a BED file.
-#The BED file has information about strand,gene ID and crucially intron number. Each entry should in theory be unique.
-intron_BED=${oFolder}/reference/${species}_full_introns.bed
-intron_tweaked_GFF=${oFolder}/reference/${species}_introns_for_HTseq.gff
-if [ ! -e $intron_BED ];then
-	 awk 'BEGIN{OFS="\t"}{split($12,a,"\"");split($NF,b,"\"");print $1,$4,$5,$7,b[2]"_"a[2]}' $intron_GFF > $intron_BED
-fi
-# Devon Ryan's script labels each intron as "intronic sequence" in the GFF which HTSeq will throw out. So we have to alter it.
-if [ ! -e $intron_tweaked_GFF ];then
-	sed 's/intronic/exonic/g' ${intron_GFF} > ${intron_tweaked_GFF}
+# If the tweaked file doesn't exist, create it safely from your existing Gencode v49 GTF/GFF
+if [ ! -e $intron_tweaked_GFF ]; then
+    mkdir -p "${oFolder}/reference"
+    # Converts intronic references to 'exonic' tags so HTSeq-count does not discard them
+    if [ -f "${gff_base}.gtf" ]; then
+        sed 's/intron/exonic/g' "${gff_base}.gtf" > ${intron_tweaked_GFF}
+    else
+        # Fallback if you are using the raw gtf file directly
+        sed 's/intron/exonic/g' "${ref_dir}/gencode.v49.annotation.gtf" > ${intron_tweaked_GFF}
+    fi
 fi
 intron_GFF=${intron_tweaked_GFF}
 
@@ -903,7 +901,5 @@ if [[ "$submit" == "yes" ]];then
                 qsub $hold $Step7_master_jobscript
         fi
 fi
-	
-
 
 exit

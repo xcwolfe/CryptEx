@@ -141,10 +141,13 @@ if [[ "$strict" == "yes" ]]; then
 fi
 
 Step1_jobscript="${clusterFolder}/submission/Step1_${protein}_${species}.sh"
+Step1_taskfile="${clusterFolder}/submission/Step1_${protein}_${species}_tasks.txt"
+rm -f "$Step1_taskfile"
+
 sample_num_1=$(awk 'NR > 1' "$support" | wc -l)
 
 if [[ "$splice_extractor" == "yes" ]]; then
-    echo "creating job scripts for spliced read extraction" 
+    echo "creating job scripts and task file for spliced read extraction" 
 
     echo "#!/bin/bash
 #SBATCH --mem=6G
@@ -153,11 +156,13 @@ if [[ "$splice_extractor" == "yes" ]]; then
 #SBATCH --job-name=${Step1_jobID}
 #SBATCH --array=1-${sample_num_1}%20
 
-# Slurm will safely fall back to the execution directory for logs if -o/-e are omitted from headers
 if [[ \"\$SLURM_ARRAY_TASK_ID\" == \"1\" ]]; then
     echo \"Step1 started at \$(date +%H:%M:%S)\" >> $report_file
 fi    
-jobs=\"" > "$Step1_jobscript"
+
+TARGET_SCRIPT=\$(sed -n \"\${SLURM_ARRAY_TASK_ID}p\" \"$Step1_taskfile\")
+bash \"\$TARGET_SCRIPT\"
+" > "$Step1_jobscript"
 
     awk 'NR > 1 {print $1,$2,$3}' "$support" | while read -r sample bam dataset; do
         splicefolder="${results}/${dataset}/splice_extraction"
@@ -173,13 +178,8 @@ bedtools intersect -a ${output}.spliced.bed -b ${exon_GFF} -v > ${output}.splice
 echo \"Step 1 finished for $sample at \$(date +%H:%M:%S)\" >> $report_file 
 " > "$sample_jobscript"
 
-        echo "$sample_jobscript" >> "$Step1_jobscript"
+        echo "$sample_jobscript" >> "$Step1_taskfile"
     done
-
-    echo "\"
-script=\$(echo \$jobs | cut -f\$SLURM_ARRAY_TASK_ID -d \" \")
-bash \$script
-" >> "$Step1_jobscript"
 fi
 
 ############################################
@@ -197,10 +197,13 @@ if [[ "$strict" == "yes" ]]; then
     Step2_jobID="Step2_${protein}_${species}_strict_${strict_num}"
 fi
 
+Step2_taskfile="${clusterFolder}/submission/Step2_${protein}_${species}_tasks.txt"
+rm -f "$Step2_taskfile"
+
 sample_num_2=$(awk 'NR > 1 {print $3}' "$support" | uniq | wc -l)
 
 if [ "$gff_creator" = "yes" ]; then
-    echo "creating job script for GFF creation"
+    echo "creating job script and task file for GFF creation"
 
     echo "#!/bin/bash
 #SBATCH --mem=4G
@@ -212,7 +215,10 @@ if [ "$gff_creator" = "yes" ]; then
 if [[ \"\$SLURM_ARRAY_TASK_ID\" == \"1\" ]]; then
     echo \"Step2 started at \$(date +%H:%M:%S)\" >> $report_file
 fi      
-jobs=\"" > "$Step2_jobscript"
+
+TARGET_SCRIPT=\$(sed -n \"\${SLURM_ARRAY_TASK_ID}p\" \"$Step2_taskfile\")
+bash \"\$TARGET_SCRIPT\"
+" > "$Step2_jobscript"
 
     for dataset in $(awk 'NR > 1 {print $3}' "$support" | uniq); do
         mkdir -p "${results}/${dataset}/GFF"
@@ -224,22 +230,20 @@ jobs=\"" > "$Step2_jobscript"
 bash $Step2_master --dataset ${dataset} --output ${output} --intron_BED ${intron_BED} --exon_GFF ${exon_GFF} --strict ${strict} --strict_num ${strict_num} --spliced_beds ${spliced_beds}
 " > "$step2_dataset_script"
 
-        echo "$step2_dataset_script" >> "$Step2_jobscript"
+        echo "$step2_dataset_script" >> "$Step2_taskfile"
     done
-
-    echo "\"
-script=\$(echo \$jobs | cut -f\$SLURM_ARRAY_TASK_ID -d \" \")
-bash \$script
-" >> "$Step2_jobscript"
 fi
 
 ##############################################################
-## STEP 3: READ COUNTING FOR EACH BAM WITH THE NEW GFF FILE###
+## STEP 3: READ COUNTING FOR EACH BAM WITH THE NEW GFF FILE ###
 ##############################################################
 
 if [[ "$read_counter" = "yes" ]]; then 
 
     Step3_master_jobscript="${clusterFolder}/submission/Step3_count_${protein}_${species}.sh"
+    Step3_taskfile="${clusterFolder}/submission/Step3_${protein}_${species}_tasks.txt"
+    rm -f "$Step3_taskfile"
+
     step3_num=$(awk 'NR > 1' "$support" | wc -l)
     Step3_jobID="Step3_${protein}_${species}"
     if [[ "$strict" == "yes" ]]; then 
@@ -256,7 +260,10 @@ if [[ "$read_counter" = "yes" ]]; then
 if [[ \"\$SLURM_ARRAY_TASK_ID\" == \"1\" ]]; then
     echo \"Step3 started at \$(date +%H:%M:%S)\" >> $report_file
 fi
-jobs=\"" > "$Step3_master_jobscript"
+
+TARGET_SCRIPT=\$(sed -n \"\${SLURM_ARRAY_TASK_ID}p\" \"$Step3_taskfile\")
+bash \"\$TARGET_SCRIPT\"
+" > "$Step3_master_jobscript"
 
     awk 'NR > 1 {print $1,$2,$3,$4}' "$support" | while read -r sample bam dataset condition; do
         if [[ "$strict" == "no" ]]; then
@@ -288,13 +295,9 @@ jobs=\"" > "$Step3_master_jobscript"
 python $pycount --stranded no -p ${paired_val} -f bam -r pos $GFF $bam ${output}
 echo \"Step 3 finished for $sample at \$(date +%H:%M:%S)\" >> $report_file 
 " > "$Step3_sample_jobscript"
-        echo "$Step3_sample_jobscript" >> "$Step3_master_jobscript"
+        
+        echo "$Step3_sample_jobscript" >> "$Step3_taskfile"
     done
-
-    echo "\"
-script=\$(echo \$jobs | cut -f\$SLURM_ARRAY_TASK_ID -d \" \")
-bash \$script
-" >> "$Step3_master_jobscript"
     echo "creating job scripts for read counting"
 fi
 

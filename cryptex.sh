@@ -145,8 +145,8 @@ results=${oFolder}/${protein}_${species}
 reference="/home/zw529/donglab/pipelines/modules/rnaseq/bin/CryptEx/reference" # Keep shared ref files local
 clusterFolder=${results}/cluster
 
-for folder in ${oFolder} ${results} ${reference} ${clusterFolder} ${clusterFolder}/out ${clusterFolder}/error ${clusterFolder}/R  ${clusterFolder}/submission; do
-    if [ ! -e $folder ]; then mkdir $folder; fi
+for folder in "${oFolder}" "${results}" "${reference}" "${clusterFolder}" "${clusterFolder}/out" "${clusterFolder}/error" "${clusterFolder}/R" "${clusterFolder}/submission"; do
+    mkdir -p "$folder"
 done
 
 # Users provide their own GFF file and their own GFF introns file. 
@@ -868,7 +868,7 @@ fi
 if [[ "$submit" == "yes" ]];then
 	hold=""
 	if [[ "$splice_extractor" == "yes" ]];then
-		qsub $Step1_jobscript
+		qsub -o "${clusterFolder}/out" -e "${results}/report.txt" $Step1_jobscript
 		hold="-hold_jid $Step1_jobID"
 	fi
 	if [[ "$gff_creator" == "yes" ]];then
@@ -876,11 +876,11 @@ if [[ "$submit" == "yes" ]];then
 		Step1_jobID=Step1_${protein}_${species}			
 		hold="-hold_jid $Step1_jobID"
 		fi
-		qsub $hold $Step2_jobscript
+		qsub -o "${clusterFolder}/out" -e "${results}/report.txt" $hold $Step2_jobscript
 		hold="-hold_jid $Step2_jobID"
 	fi
 	if [[ "$read_counter" == "yes" ]]; then
-		qsub $hold $Step3_master_jobscript
+		qsub -o "${clusterFolder}/out" -e "${clusterFolder}/error" $hold $Step3_master_jobscript
 		hold="-hold_jid $Step3_jobID"
 	fi
 	if [[ "$DESeq" == "yes" ]]; then

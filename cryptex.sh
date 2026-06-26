@@ -320,17 +320,11 @@ if [ "$DEXSeq" = "yes" ] && [ "$sanity_check" = "dataset" ]; then
     fi
 
     sample_num=$(awk 'NR > 1' "$support" | wc -l)
-    DEXSEQ_MEM=8
-    DEXSEQ_CORES=4
-    if [ "$sample_num" -gt 8 ]; then
-        DEXSEQ_CORES=12
-        DEXSEQ_MEM=3.5
-    fi
 
     echo "#!/bin/bash
-#SBATCH --mem=${DEXSEQ_MEM}G
+#SBATCH --mem=8G
 #SBATCH --time=3:00:00
-#SBATCH --cpus-per-task=${DEXSEQ_CORES}
+#SBATCH --cpus-per-task=4
 #SBATCH --output=${clusterFolder}/out/Step4_%A_%a.out
 #SBATCH --error=${clusterFolder}/error/Step4_%A_%a.err
 #SBATCH --job-name=${Step4_jobID}

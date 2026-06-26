@@ -52,6 +52,10 @@ strict_num=500
 
 paired="no"
 stranded="no"
+splice_junction_analyzer="no"
+functional_enrichment="no"
+intron_retainer="no"
+intron_DEXSeq="no"
 
 #case statement to match the argument variables coming in from the submission script
 until [ -z $1 ];do

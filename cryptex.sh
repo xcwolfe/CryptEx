@@ -148,14 +148,12 @@ if [[ "$splice_extractor" == "yes" ]]; then
 
     echo "#!/bin/bash
 #SBATCH --mem=6G
-#SBATCH --time=24:00:00
+#SBATCH --time=23:00:00
 #SBATCH --cpus-per-task=1
-#SBATCH --output=${clusterFolder}/out/Step1_%A_%a.out
-#SBATCH --error=${report_file}
 #SBATCH --job-name=${Step1_jobID}
-#SBATCH --chdir=${oFolder}
 #SBATCH --array=1-${sample_num_1}%20
 
+# Slurm will safely fall back to the execution directory for logs if -o/-e are omitted from headers
 if [[ \"\$SLURM_ARRAY_TASK_ID\" == \"1\" ]]; then
     echo \"Step1 started at \$(date +%H:%M:%S)\" >> $report_file
 fi    
@@ -206,12 +204,9 @@ if [ "$gff_creator" = "yes" ]; then
 
     echo "#!/bin/bash
 #SBATCH --mem=4G
-#SBATCH --time=24:00:00
+#SBATCH --time=23:00:00
 #SBATCH --cpus-per-task=4
-#SBATCH --output=${clusterFolder}/out/Step2_%A_%a.out
-#SBATCH --error=${report_file}
 #SBATCH --job-name=${Step2_jobID}
-#SBATCH --chdir=${oFolder}
 #SBATCH --array=1-${sample_num_2}%20
 
 if [[ \"\$SLURM_ARRAY_TASK_ID\" == \"1\" ]]; then
@@ -253,12 +248,9 @@ if [[ "$read_counter" = "yes" ]]; then
 
     echo "#!/bin/bash
 #SBATCH --mem=4G
-#SBATCH --time=24:00:00
+#SBATCH --time=23:00:00
 #SBATCH --cpus-per-task=2
-#SBATCH --output=${clusterFolder}/out/Step3_%A_%a.out
-#SBATCH --error=${clusterFolder}/error/Step3_%A_%a.err
 #SBATCH --job-name=$Step3_jobID
-#SBATCH --chdir=${oFolder}
 #SBATCH --array=1-${step3_num}%20
 
 if [[ \"\$SLURM_ARRAY_TASK_ID\" == \"1\" ]]; then
@@ -531,7 +523,7 @@ if [ "$DESeq" = "yes" ] && [ "$sanity_check" = "dataset" ]; then
 
     echo "#!/bin/bash
 #SBATCH --mem=8G
-#SBATCH --time=24:00:00
+#SBATCH --time=23:00:00
 #SBATCH --cpus-per-task=4
 #SBATCH --output=${clusterFolder}/out/Step5_%A_%a.out
 #SBATCH --error=${clusterFolder}/error/Step5_%A_%a.err
@@ -594,8 +586,11 @@ fi
 if [[ "$submit" == "yes" ]]; then
     hold=""
     
+    # Standard log and directory parameters passed explicitly
+    LOG_ARGS="--chdir=${oFolder} --output=${clusterFolder}/out/%x_%A_%a.out --error=${clusterFolder}/error/%x_%A_%a.err"
+    
     if [[ "$splice_extractor" == "yes" ]]; then
-        JOB_OUT=$(sbatch "$Step1_jobscript")
+        JOB_OUT=$(sbatch $LOG_ARGS --error="${report_file}" "$Step1_jobscript")
         Step1_jobID=$(echo "$JOB_OUT" | awk '{print $NF}')
         hold="--dependency=afterok:$Step1_jobID"
         echo "Submitted Step 1: $Step1_jobID"
@@ -606,14 +601,14 @@ if [[ "$submit" == "yes" ]]; then
             Step1_jobID="Step1_${protein}_${species}"          
             hold="--dependency=afterok:$Step1_jobID"
         fi
-        JOB_OUT=$(sbatch $hold "$Step2_jobscript")
+        JOB_OUT=$(sbatch $hold $LOG_ARGS --error="${report_file}" "$Step2_jobscript")
         Step2_jobID=$(echo "$JOB_OUT" | awk '{print $NF}')
         hold="--dependency=afterok:$Step2_jobID"
         echo "Submitted Step 2: $Step2_jobID"
     fi
     
     if [[ "$read_counter" == "yes" ]]; then
-        JOB_OUT=$(sbatch $hold "$Step3_master_jobscript")
+        JOB_OUT=$(sbatch $hold $LOG_ARGS "$Step3_master_jobscript")
         Step3_jobID=$(echo "$JOB_OUT" | awk '{print $NF}')
         hold="--dependency=afterok:$Step3_jobID"
         echo "Submitted Step 3: $Step3_jobID"

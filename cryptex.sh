@@ -50,6 +50,9 @@ strict_num=500
 # Each step in the pipeline can be run independently of every other step but for efficiency purposes I'd like to be able to run each step in series automatically. 
 # Each step's job script has unique ID and variable name
 
+paired="no"
+stranded="no"
+
 #case statement to match the argument variables coming in from the submission script
 until [ -z $1 ];do
 	case $1 in
@@ -116,6 +119,9 @@ until [ -z $1 ];do
 	--stranded)
 	shift
 	stranded=$1;;
+	--outdir)          # <-- ADD THIS
+	shift
+	oFolder=$1;;       # Overwrite default oFolder with custom outdir path
 	-* )
 	echo "unrecognised argument: $1"
 	exit 1;;
@@ -126,9 +132,13 @@ if [ "$#" = "0" ]; then break; fi
 done
 
 
-oFolder="/home/zw529/donglab/pipelines/modules/rnaseq/bin/CryptEx"
+# If oFolder wasn't updated by an incoming --outdir parameter, fallback to local script dir
+if [ -z "${oFolder:-}" ]; then
+    oFolder="/home/zw529/donglab/pipelines/modules/rnaseq/bin/CryptEx"
+fi
+
 results=${oFolder}/${protein}_${species}
-reference=${oFolder}/reference
+reference="/home/zw529/donglab/pipelines/modules/rnaseq/bin/CryptEx/reference" # Keep shared ref files local
 clusterFolder=${results}/cluster
 
 for folder in ${oFolder} ${results} ${reference} ${clusterFolder} ${clusterFolder}/out ${clusterFolder}/error ${clusterFolder}/R  ${clusterFolder}/submission; do

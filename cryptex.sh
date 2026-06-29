@@ -18,12 +18,8 @@ R_support_chopper="${oFolder}/support_frame_chopper.R"
 R_splice_junction_analyzer="${oFolder}/downstream_analyses/splice_junction_analyzer.R"
 R_functional_enrichment="${oFolder}/downstream_analyses/Functional_Enrichment.R"
 
-# dexseq_count.py comes with HTSeq - dynamically call via python execution instead of rigid paths
-pycount="dexseq_count.py" 
-if ! which dexseq_count.py &>/dev/null; then
-    # Fallback if the script isn't globally exposed in your loaded modules
-    pycount="/home/zw529/donglab/pipelines/modules/rnaseq/bin/CryptEx/dexseq/dexseq_count.py"
-fi
+# Explicit path to verified DEXSeq cluster script location
+pycount="/home/zw529/R/x86_64-pc-linux-gnu-library/4.4/DEXSeq/python_scripts/dexseq_count.py"
 
 # ==============================================================================
 # DEFAULT BASE COHORT ASSIGNMENTS (Optimized for Zach's TargetALS Human Pipelines)
@@ -359,7 +355,7 @@ jobs=\"" > "$Step4_master_jobscript"
         fi
 
         awk -v dataset="$dataset" 'NR == 1 {print $0} $3 == dataset {print $0}' "$support" > "$support_frame"
-        bam_list=$(awk -F"/" -v results="$results" -v dataset="$dataset" 'NR>1 {split($NF,a,"_unique.bam"); print results"/"dataset"/splice_extraction/"dataset"_" a[1]".spliced.exons.bam"}' "$support_frame" | tr '\n' '\t')
+        bam_list=$(awk -v results="$results" -v dataset="$dataset" 'NR>1 {print results"/"dataset"/splice_extraction/"dataset"_"$1".spliced.exons.bam"}' "$support_frame" | tr '\n' '\t')
         sample_list=$(awk 'NR>1{print $1}' "$support_frame" | tr '\n' '\t')
 
         echo "#!/bin/bash

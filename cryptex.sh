@@ -206,7 +206,7 @@ if [ "$gff_creator" = "yes" ]; then
     echo "creating job script and task file for GFF creation"
 
     echo "#!/bin/bash
-#SBATCH --mem=4G
+#SBATCH --mem=24G
 #SBATCH --time=23:00:00
 #SBATCH --cpus-per-task=4
 #SBATCH --job-name=${Step2_jobID}
@@ -251,7 +251,7 @@ if [[ "$read_counter" = "yes" ]]; then
     fi
 
     echo "#!/bin/bash
-#SBATCH --mem=4G
+#SBATCH --mem=24G
 #SBATCH --time=23:00:00
 #SBATCH --cpus-per-task=2
 #SBATCH --job-name=$Step3_jobID
@@ -322,7 +322,7 @@ if [ "$DEXSeq" = "yes" ] && [ "$sanity_check" = "dataset" ]; then
     sample_num=$(awk 'NR > 1' "$support" | wc -l)
 
     echo "#!/bin/bash
-#SBATCH --mem=8G
+#SBATCH --mem=24G
 #SBATCH --time=3:00:00
 #SBATCH --cpus-per-task=4
 #SBATCH --output=${clusterFolder}/out/Step4_%A_%a.out
@@ -401,7 +401,7 @@ if [[ "$splice_junction_analyzer" == "yes" ]]; then
     Step4b_jobID="Step4b_${protein}_${species}"
 
     echo "#!/bin/bash
-#SBATCH --mem=4G
+#SBATCH --mem=24G
 #SBATCH --time=3:00:00
 #SBATCH --cpus-per-task=1
 #SBATCH --output=${clusterFolder}/out/Step4b_%A_%a.out
@@ -464,7 +464,7 @@ if [[ "$functional_enrichment" == "yes" ]]; then
     Step4c_jobID="Step4c_${protein}_${species}"
 
     echo "#!/bin/bash
-#SBATCH --mem=4G
+#SBATCH --mem=24G
 #SBATCH --time=3:00:00
 #SBATCH --cpus-per-task=1
 #SBATCH --output=${clusterFolder}/out/Step4c_%A_%a.out
@@ -519,7 +519,7 @@ if [ "$DESeq" = "yes" ] && [ "$sanity_check" = "dataset" ]; then
     Step5_jobID="Step5_${protein}_${species}"
 
     echo "#!/bin/bash
-#SBATCH --mem=8G
+#SBATCH --mem=16G
 #SBATCH --time=23:00:00
 #SBATCH --cpus-per-task=4
 #SBATCH --output=${clusterFolder}/out/Step5_%A_%a.out

@@ -150,7 +150,7 @@ if [[ "$splice_extractor" == "yes" ]]; then
 #SBATCH --time=23:00:00
 #SBATCH --cpus-per-task=1
 #SBATCH --job-name=${Step1_jobID}
-#SBATCH --array=1-${sample_num_1}%20
+#SBATCH --array=1-${sample_num_1}%30
 
 if [[ \"\$SLURM_ARRAY_TASK_ID\" == \"1\" ]]; then
     echo \"Step1 started at \$(date +%H:%M:%S)\" >> $report_file
@@ -203,10 +203,10 @@ if [ "$gff_creator" = "yes" ]; then
 
     echo "#!/bin/bash
 #SBATCH --mem=24G
-#SBATCH --time=23:00:00
+#SBATCH --time=9:00:00
 #SBATCH --cpus-per-task=4
 #SBATCH --job-name=${Step2_jobID}
-#SBATCH --array=1-${sample_num_2}%20
+#SBATCH --array=1-${sample_num_2}%30
 
 if [[ \"\$SLURM_ARRAY_TASK_ID\" == \"1\" ]]; then
     echo \"Step2 started at \$(date +%H:%M:%S)\" >> $report_file
@@ -248,10 +248,10 @@ if [[ "$read_counter" = "yes" ]]; then
 
     echo "#!/bin/bash
 #SBATCH --mem=24G
-#SBATCH --time=23:00:00
+#SBATCH --time=9:00:00
 #SBATCH --cpus-per-task=2
 #SBATCH --job-name=$Step3_jobID
-#SBATCH --array=1-${step3_num}%20
+#SBATCH --array=1-${step3_num}%30
 
 if [[ \"\$SLURM_ARRAY_TASK_ID\" == \"1\" ]]; then
     echo \"Step3 started at \$(date +%H:%M:%S)\" >> $report_file
@@ -319,13 +319,15 @@ if [ "$DEXSeq" = "yes" ] && [ "$sanity_check" = "dataset" ]; then
 
     echo "#!/bin/bash
 #SBATCH --mem=24G
-#SBATCH --time=3:00:00
+#SBATCH --time=5:00:00
 #SBATCH --cpus-per-task=4
 #SBATCH --output=${clusterFolder}/out/Step4_%A_%a.out
 #SBATCH --error=${clusterFolder}/error/Step4_%A_%a.err
 #SBATCH --job-name=${Step4_jobID}
 #SBATCH --chdir=${oFolder}
-#SBATCH --array=1-${dataset_num}%20
+#SBATCH --array=1-${dataset_num}%30
+
+module load R
 
 if [[ \"\$SLURM_ARRAY_TASK_ID\" == \"1\" ]]; then
     echo \"Step4 started at \$(date +%H:%M:%S)\" >> $report_file
@@ -406,6 +408,8 @@ if [[ "$splice_junction_analyzer" == "yes" ]]; then
 #SBATCH --chdir=${oFolder}
 #SBATCH --array=1-${dataset_num}%20
 
+module load R
+
 if [[ \"\$SLURM_ARRAY_TASK_ID\" == \"1\" ]]; then
     echo \"Step4b started at \$(date +%H:%M:%S)\" >> $report_file
 fi
@@ -467,7 +471,9 @@ if [[ "$functional_enrichment" == "yes" ]]; then
 #SBATCH --error=${clusterFolder}/error/Step4c_%A_%a.err
 #SBATCH --job-name=${Step4c_jobID}
 #SBATCH --chdir=${oFolder}
-#SBATCH --array=1-${dataset_num}%20
+#SBATCH --array=1-${dataset_num}%30
+
+module load R
 
 if [[ \"\$SLURM_ARRAY_TASK_ID\" == \"1\" ]]; then
     echo \"Step4c started at \$(date +%H:%M:%S)\" >> $report_file
@@ -516,13 +522,15 @@ if [ "$DESeq" = "yes" ] && [ "$sanity_check" = "dataset" ]; then
 
     echo "#!/bin/bash
 #SBATCH --mem=16G
-#SBATCH --time=23:00:00
+#SBATCH --time=9:00:00
 #SBATCH --cpus-per-task=4
 #SBATCH --output=${clusterFolder}/out/Step5_%A_%a.out
 #SBATCH --error=${clusterFolder}/error/Step5_%A_%a.err
 #SBATCH --job-name=${Step5_jobID}
 #SBATCH --chdir=${oFolder}
-#SBATCH --array=1-${dataset_num}%20
+#SBATCH --array=1-${dataset_num}%30
+
+module load R
 
 if [[ \"\$SLURM_ARRAY_TASK_ID\" == \"1\" ]]; then
     echo \"Step5 started at \$(date +%H:%M:%S)\" >> $report_file

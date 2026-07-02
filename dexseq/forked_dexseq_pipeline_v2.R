@@ -63,7 +63,7 @@ support <- support[,apply(X=support,MARGIN=2,FUN=function(x) !(sum(is.na(x))==le
 my.ids <- support$sample
 list.conditions <- grep(names(support), pattern = '^condition.*', value  = TRUE)
 
-annotation <- read.table(annotation.file, header = TRUE, sep = '\t', na.string = c('NA', ''), quote = "")
+annotation <- read.table(annotation.file, header = FALSE, skip = 1, sep = '\t', na.strings = c('NA', ''), quote = "", col.names = c("gene_id", "gene_name", "gene_type"))
 names(annotation) <- ifelse (names(annotation) == "external_gene_name", "external_gene_id", names(annotation)) # trying to agree on the column names
 
 BPPARAM = MulticoreParam(workers=4)

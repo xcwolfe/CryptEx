@@ -68,7 +68,7 @@ names(annotation) <- ifelse (names(annotation) == "external_gene_name", "externa
 
 BPPARAM = MulticoreParam(workers=4)
 # if more than 8 samples are present then the job is run on 12 cores instead so make sure to use them all!
-if(nrow(support) > 8)
+if(nrow(support) > 8) {
   BPPARAM = MulticoreParam(workers=12)
 }
 

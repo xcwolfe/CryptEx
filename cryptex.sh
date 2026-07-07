@@ -248,7 +248,7 @@ if [[ "$read_counter" = "yes" ]]; then
 
     echo "#!/bin/bash
 #SBATCH --mem=24G
-#SBATCH --time=9:00:00
+#SBATCH --time=16:00:00
 #SBATCH --cpus-per-task=2
 #SBATCH --job-name=$Step3_jobID
 #SBATCH --array=1-${step3_num}%30
@@ -400,7 +400,7 @@ if [[ "$splice_junction_analyzer" == "yes" ]]; then
 
     echo "#!/bin/bash
 #SBATCH --mem=24G
-#SBATCH --time=3:00:00
+#SBATCH --time=12:00:00
 #SBATCH --cpus-per-task=1
 #SBATCH --output=${clusterFolder}/out/Step4b_%A_%a.out
 #SBATCH --error=${clusterFolder}/error/Step4b_%A_%a.err
@@ -465,7 +465,7 @@ if [[ "$functional_enrichment" == "yes" ]]; then
 
     echo "#!/bin/bash
 #SBATCH --mem=24G
-#SBATCH --time=3:00:00
+#SBATCH --time=12:00:00
 #SBATCH --cpus-per-task=1
 #SBATCH --output=${clusterFolder}/out/Step4c_%A_%a.out
 #SBATCH --error=${clusterFolder}/error/Step4c_%A_%a.err

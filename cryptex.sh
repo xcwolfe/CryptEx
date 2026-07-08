@@ -44,6 +44,7 @@ intron_retainer="no"
 intron_DEXSeq="no"
 hold_Step1="no"
 IGV="no"
+intron_BED_passed="" # Tracking holder for dynamic override
 
 # Argument parsing matrix
 until [ -z "${1:-}" ]; do
@@ -54,6 +55,7 @@ until [ -z "${1:-}" ]; do
         --submit) shift; submit=$1 ;;
         --support) shift; support=$1 ;;
         --gff) shift; gff=$1 ;;
+        --intron_BED) shift; intron_BED_passed=$1 ;; # Added parser check
         --splice_extractor) shift; splice_extractor=$1 ;;
         --gff_creator) shift; gff_creator=$1 ;;
         --read_counter) shift; read_counter=$1 ;;
@@ -63,6 +65,7 @@ until [ -z "${1:-}" ]; do
         --intron_DEXSeq) shift; intron_DEXSeq=$1 ;;
         --cohort_merger) shift; cohort_merger=$1 ;;
         --strict) shift; strict=$1 ;;
+        --strict_num) shift; strict_num=$1 ;; # Kept synchronized
         --IGV) shift; IGV=$1 ;;
         --splice_junction_analyzer) shift; splice_junction_analyzer=$1 ;;
         --functional_enrichment) shift; functional_enrichment=$1 ;;
@@ -94,7 +97,14 @@ gff_base="${ref_dir}/gencode.v49.annotation"
 annotation_file="/home/zw529/donglab/references/genome/Homo_sapiens/UCSC/hg38/Sequence/STAR/geneInfo.tab"
 
 exon_GFF="${gff_base}_exons_only.gff"
-intron_BED="/home/zw529/donglab/references/genome/Homo_sapiens/UCSC/hg38/Sequence/STAR/introns.sorted.bed"
+
+# Use passed --intron_BED parameter if present, otherwise fall back to default
+if [ -n "$intron_BED_passed" ]; then
+    intron_BED="$intron_BED_passed"
+else
+    intron_BED="/home/zw529/donglab/references/genome/Homo_sapiens/UCSC/hg38/Sequence/STAR/introns.sorted.bed"
+fi
+
 intron_tweaked_GFF="${oFolder}/reference/human_introns_for_HTseq.gff"
 
 if [ ! -e "$intron_tweaked_GFF" ]; then

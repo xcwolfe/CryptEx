@@ -206,7 +206,6 @@ if [ "$gff_creator" = "yes" ]; then
 #SBATCH --time=9:00:00
 #SBATCH --cpus-per-task=4
 #SBATCH --job-name=${Step2_jobID}
-#SBATCH --array=1-${sample_num_2}%30
 
 if [[ \"\$SLURM_ARRAY_TASK_ID\" == \"1\" ]]; then
     echo \"Step2 started at \$(date +%H:%M:%S)\" >> $report_file

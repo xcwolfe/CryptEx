@@ -297,8 +297,8 @@ bash \"\$TARGET_SCRIPT\"
         mkdir -p "$countFolder"
 
         echo "#!/bin/bash
-# Execute counting and filter out 2-column HTSeq summary rows on the fly
-python $pycount --stranded no -p ${paired_val} -f bam -r pos $GFF $bam | grep -v "^_" > ${output}
+# Execute counting, stream to stdout via '-', and filter out 2-column HTSeq summary rows on the fly
+python $pycount --stranded no -p ${paired_val} -f bam -r pos $GFF $bam - | grep -v "^_" > ${output}
 echo \"Step 3 finished for $sample at \$(date +%H:%M:%S)\" >> $report_file 
 " > "$Step3_sample_jobscript"
         

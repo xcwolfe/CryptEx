@@ -22,7 +22,7 @@ R_functional_enrichment="${oFolder}/downstream_analyses/Functional_Enrichment.R"
 pycount="/home/zw529/R/x86_64-pc-linux-gnu-library/4.4/DEXSeq/python_scripts/dexseq_count.py"
 
 # ==============================================================================
-# DEFAULT BASE COHORT ASSIGNMENTS (Optimized for Zach's TargetALS Human Pipelines)
+# DEFAULT BASE COHORT ASSIGNMENTS
 # ==============================================================================
 species="human"
 protein="TDP43"
@@ -140,7 +140,6 @@ cat "$support" >> "$report_file"
 #################################
 ### STEP 1: SPLICE EXTRACTION ###
 #################################
-
 Step1_jobID="Step1_${protein}_${species}"
 if [[ "$strict" == "yes" ]]; then 
     Step1_jobID="Step1_${protein}_${species}_strict_${strict_num}"
@@ -192,7 +191,6 @@ fi
 ############################################
 ### STEP 2: BED MERGING AND GFF CREATION ###
 ############################################
-
 Step2_jobscript="${clusterFolder}/submission/Step2_GFF_creator_${protein}_${species}.sh"
 if [[ "$strict" == "yes" ]]; then 
     Step2_jobscript="${clusterFolder}/submission/Step2_GFF_creator_${protein}_${species}_strict_${strict_num}.sh"
@@ -245,7 +243,6 @@ fi
 ##############################################################
 ## STEP 3: READ COUNTING FOR EACH BAM WITH THE NEW GFF FILE ###
 ##############################################################
-
 if [[ "$read_counter" = "yes" ]]; then 
 
     Step3_master_jobscript="${clusterFolder}/submission/Step3_count_${protein}_${species}.sh"
@@ -264,6 +261,8 @@ if [[ "$read_counter" = "yes" ]]; then
 #SBATCH --cpus-per-task=2
 #SBATCH --job-name=$Step3_jobID
 #SBATCH --array=1-${step3_num}%30
+
+module load HTSeq
 
 if [[ \"\$SLURM_ARRAY_TASK_ID\" == \"1\" ]]; then
     echo \"Step3 started at \$(date +%H:%M:%S)\" >> $report_file
@@ -299,13 +298,25 @@ bash \"\$TARGET_SCRIPT\"
         output="${countFolder}/${sample}_dexseq_counts.txt"
         mkdir -p "$countFolder"
 
-        # Using literal EOF boundary to inoculate the parentheses and clean up count files cleanly
+        # Explicit injection of programmatic GFF filtering and safe execution bounds
         cat << EOF > "$Step3_sample_jobscript"
 #!/bin/bash
-python $pycount --stranded no -p ${paired_val} -f bam -r pos $GFF $bam ${output}.tmp
-grep -v "^_" ${output}.tmp > ${output}
-rm -f ${output}.tmp
-echo "Step 3 finished for $sample at \$(date +%H:%M:%S)" >> $report_file 
+set -e
+
+# Systematically handle and exclude malformed coordinates on-the-fly where Start > End
+CLEAN_GFF="${GFF}.filtered.gff"
+awk -F'\t' 'BEGIN{OFS="\t"} \$4 <= \$5' "${GFF}" > "\${CLEAN_GFF}"
+
+# Execute read count framework using filtered annotation mapping rules
+if python $pycount --stranded no -p ${paired_val} -f bam -r pos "\${CLEAN_GFF}" "$bam" "\${output}.tmp"; then
+    grep -v "^_" "\${output}.tmp" > "\${output}"
+    rm -f "\${output}.tmp"
+    echo "Step 3 finished for $sample at \$(date +%H:%M:%S)" >> $report_file 
+else
+    echo "ERROR: dexseq_count.py failed explicitly on sample $sample" >&2
+    rm -f "\${output}.tmp"
+    exit 1
+fi
 EOF
         
         echo "$Step3_sample_jobscript" >> "$Step3_taskfile"
@@ -316,7 +327,6 @@ fi
 ####################
 ## STEP 4: DEXSeq ##
 ####################
-
 sanity_check=$(awk 'NR == 1 {print $3}' "$support")
 
 if [ "$DEXSeq" = "yes" ] && [ "$sanity_check" = "dataset" ]; then
@@ -376,9 +386,10 @@ fi" > "$Step4_master_jobscript"
         bam_list=$(awk -v results="$results" -v dataset="$dataset" 'NR>1 {print results"/"dataset"/splice_extraction/"dataset"_"$1".spliced.exons.bam"}' "$support_frame" | tr '\n' '\t')
         sample_list=$(awk 'NR>1{print $1}' "$support_frame" | tr '\n' '\t')
 
+        # Pass the filtered version of the GFF directly to R downstream processes
         cat << EOF > "$jobscript"
 #!/bin/bash
-${Rbin}script ${dexseqFinalProcessR} --cryptic ${cryptic} --gff ${GFF} --keep.sex ${keepSex} --keep.dups ${keepDups} --support.frame ${support_frame} --code ${dataset} --annotation.file ${annotation_file} --iFolder ${iFolder} > ${error_file} 2>&1
+${Rbin}script ${dexseqFinalProcessR} --cryptic ${cryptic} --gff ${GFF}.filtered.gff --keep.sex ${keepSex} --keep.dups ${keepDups} --support.frame ${support_frame} --code ${dataset} --annotation.file ${annotation_file} --iFolder ${iFolder} > ${error_file} 2>&1
 cat ${error_file} >> ${report_file}
 
 for bam in $bam_list; do
@@ -409,7 +420,6 @@ fi
 ############################
 ### STEP 4b: SJ ANALYZER ###
 ############################
-
 if [[ "$splice_junction_analyzer" == "yes" ]]; then
     Step4b_master_jobscript="${clusterFolder}/submission/Step4b_SJ_analyzer_${protein}_${species}.sh"
     dataset_num=$(awk 'NR > 1 {print $3}' "$support" | uniq | wc -l)
@@ -474,7 +484,6 @@ fi
 ##################################
 ## STEP 4c: FUNCTIONAL ENRICHMENT
 ##################################
-
 if [[ "$functional_enrichment" == "yes" ]]; then
     Step4c_master_jobscript="${clusterFolder}/submission/Step4c_Functional_Enrichment_${protein}_${species}.sh"
     dataset_num=$(awk 'NR > 1 {print $3}' "$support" | uniq | wc -l)
@@ -529,7 +538,6 @@ fi
 #######################
 ### STEP 5: DESeq #####
 #######################
-
 sanity_check=$(awk 'NR == 1 {print $3}' "$support")
 
 if [ "$DESeq" = "yes" ] && [ "$sanity_check" = "dataset" ]; then
@@ -569,7 +577,8 @@ fi" > "$Step5_master_jobscript"
 
         dexseq_counts="${results}/${dataset}/counts"
         if [ ! -e "$dexseq_counts" ]; then
-            dexseq_counts="${results}/${dataset}/strict_${strict_num}/counts"
+            box_check="${results}/${dataset}/strict_${strict_num}/counts"
+            if [ -e "$box_check" ]; then dexseq_counts="$box_check"; fi
         fi
         new_countFolder="${outFolder}/dexseq"
         mkdir -p "$new_countFolder"
@@ -601,7 +610,6 @@ fi
 ##############################
 ### FINAL STEP: SUBMISSION ###
 ##############################
-
 if [[ "$submit" == "yes" ]]; then
     hold=""
     
@@ -609,7 +617,8 @@ if [[ "$submit" == "yes" ]]; then
     LOG_ARGS="--chdir=${oFolder} --output=${clusterFolder}/out/%x_%A_%a.out --error=${clusterFolder}/error/%x_%A_%a.err"
     
     if [[ "$splice_extractor" == "yes" ]]; then
-        JOB_OUT=$(sbatch $LOG_ARGS --error="${report_file}" "$Step1_jobscript")
+        # Capture error streams clearly
+        JOB_OUT=$(sbatch $LOG_ARGS "$Step1_jobscript")
         Step1_jobID=$(echo "$JOB_OUT" | awk '{print $NF}')
         hold="--dependency=afterok:$Step1_jobID"
         echo "Submitted Step 1: $Step1_jobID"
@@ -620,7 +629,7 @@ if [[ "$submit" == "yes" ]]; then
             Step1_jobID="Step1_${protein}_${species}"          
             hold="--dependency=afterok:$Step1_jobID"
         fi
-        JOB_OUT=$(sbatch $hold $LOG_ARGS --error="${report_file}" "$Step2_jobscript")
+        JOB_OUT=$(sbatch $hold $LOG_ARGS "$Step2_jobscript")
         Step2_jobID=$(echo "$JOB_OUT" | awk '{print $NF}')
         hold="--dependency=afterok:$Step2_jobID"
         echo "Submitted Step 2: $Step2_jobID"

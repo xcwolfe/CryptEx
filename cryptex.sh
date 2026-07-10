@@ -55,7 +55,7 @@ until [ -z "${1:-}" ]; do
         --submit) shift; submit=$1 ;;
         --support) shift; support=$1 ;;
         --gff) shift; gff=$1 ;;
-        --intron_BED) shift; intron_BED_passed=$1 ;; # Added parser check
+        --intron_BED) shift; intron_BED_passed=$1 ;;
         --splice_extractor) shift; splice_extractor=$1 ;;
         --gff_creator) shift; gff_creator=$1 ;;
         --read_counter) shift; read_counter=$1 ;;
@@ -65,7 +65,7 @@ until [ -z "${1:-}" ]; do
         --intron_DEXSeq) shift; intron_DEXSeq=$1 ;;
         --cohort_merger) shift; cohort_merger=$1 ;;
         --strict) shift; strict=$1 ;;
-        --strict_num) shift; strict_num=$1 ;; # Kept synchronized
+        --strict_num) shift; strict_num=$1 ;;
         --IGV) shift; IGV=$1 ;;
         --splice_junction_analyzer) shift; splice_junction_analyzer=$1 ;;
         --functional_enrichment) shift; functional_enrichment=$1 ;;
@@ -176,13 +176,14 @@ bash \"\$TARGET_SCRIPT\"
         output="${splicefolder}/${dataset}_${sample}"
         sample_jobscript="${clusterFolder}/submission/splice_extract_${protein}_${species}_${dataset}_${sample}.sh"
         
-        echo "#!/bin/bash
+        cat << EOF > "$sample_jobscript"
+#!/bin/bash
 samtools view -h -F 256 $bam | awk '\$1 ~ /@/ || \$6 ~ /N/' | samtools view -bh - > ${output}.spliced.bam 
 bedtools intersect -a ${output}.spliced.bam -b ${exon_GFF} > ${output}.spliced.exons.bam
 bedtools bamtobed -i ${output}.spliced.exons.bam -split | sort -k1,1 -k2,2n > ${output}.spliced.bed
 bedtools intersect -a ${output}.spliced.bed -b ${exon_GFF} -v > ${output}.spliced.introns.bed
-echo \"Step 1 finished for $sample at \$(date +%H:%M:%S)\" >> $report_file 
-" > "$sample_jobscript"
+echo "Step 1 finished for $sample at \$(date +%H:%M:%S)" >> $report_file 
+EOF
 
         echo "$sample_jobscript" >> "$Step1_taskfile"
     done
@@ -216,6 +217,7 @@ if [ "$gff_creator" = "yes" ]; then
 #SBATCH --time=9:00:00
 #SBATCH --cpus-per-task=4
 #SBATCH --job-name=${Step2_jobID}
+#SBATCH --array=1-${sample_num_2}
 
 if [[ \"\$SLURM_ARRAY_TASK_ID\" == \"1\" ]]; then
     echo \"Step2 started at \$(date +%H:%M:%S)\" >> $report_file
@@ -231,9 +233,10 @@ bash \"\$TARGET_SCRIPT\"
         output="${results}/${dataset}/GFF/${protein}_${species}_${dataset}"
         step2_dataset_script="${clusterFolder}/submission/GFF_creator_${protein}_${species}_${dataset}.sh"
 
-        echo "#!/bin/bash
+        cat << EOF > "$step2_dataset_script"
+#!/bin/bash
 bash $Step2_master --dataset ${dataset} --output ${output} --intron_BED ${intron_BED} --exon_GFF ${exon_GFF} --strict ${strict} --strict_num ${strict_num} --spliced_beds ${spliced_beds}
-" > "$step2_dataset_script"
+EOF
 
         echo "$step2_dataset_script" >> "$Step2_taskfile"
     done
@@ -296,15 +299,14 @@ bash \"\$TARGET_SCRIPT\"
         output="${countFolder}/${sample}_dexseq_counts.txt"
         mkdir -p "$countFolder"
 
-        echo "#!/bin/bash
-# Execute counting and save the raw file natively
-python \$pycount --stranded no -p \${paired_val} -f bam -r pos \$GFF \$bam \${output}
-
-# Immediately strip out the 2-column HTSeq summary rows in-place (escaped for nested echoes)
-sed -i '/^_[a-z]/d' \${output}
-
-echo "Step 3 finished for \$sample at \$(date +%H:%M:%S)" >> \$report_file 
-" > "$Step3_sample_jobscript"
+        # Using literal EOF boundary to inoculate the parentheses and clean up count files cleanly
+        cat << EOF > "$Step3_sample_jobscript"
+#!/bin/bash
+python $pycount --stranded no -p ${paired_val} -f bam -r pos $GFF $bam ${output}.tmp
+grep -v "^_" ${output}.tmp > ${output}
+rm -f ${output}.tmp
+echo "Step 3 finished for $sample at \$(date +%H:%M:%S)" >> $report_file 
+EOF
         
         echo "$Step3_sample_jobscript" >> "$Step3_taskfile"
     done
@@ -345,9 +347,9 @@ module load R
 
 if [[ \"\$SLURM_ARRAY_TASK_ID\" == \"1\" ]]; then
     echo \"Step4 started at \$(date +%H:%M:%S)\" >> $report_file
-fi
-jobs=\"" > "$Step4_master_jobscript"
+fi" > "$Step4_master_jobscript"
 
+    jobs=""
     for dataset in $(awk 'NR > 1 {print $3}' "$support" | uniq); do
         DEXSeqFolder="${results}/${dataset}/dexseq"
         mkdir -p "$DEXSeqFolder"
@@ -374,7 +376,8 @@ jobs=\"" > "$Step4_master_jobscript"
         bam_list=$(awk -v results="$results" -v dataset="$dataset" 'NR>1 {print results"/"dataset"/splice_extraction/"dataset"_"$1".spliced.exons.bam"}' "$support_frame" | tr '\n' '\t')
         sample_list=$(awk 'NR>1{print $1}' "$support_frame" | tr '\n' '\t')
 
-        echo "#!/bin/bash
+        cat << EOF > "$jobscript"
+#!/bin/bash
 ${Rbin}script ${dexseqFinalProcessR} --cryptic ${cryptic} --gff ${GFF} --keep.sex ${keepSex} --keep.dups ${keepDups} --support.frame ${support_frame} --code ${dataset} --annotation.file ${annotation_file} --iFolder ${iFolder} > ${error_file} 2>&1
 cat ${error_file} >> ${report_file}
 
@@ -386,18 +389,18 @@ for i in \$(ls ${DEXSeqFolder}/); do
     comparison=\$(basename \$i)
     if [ -e ${DEXSeqFolder}/\$comparison/${dataset}_\${comparison}_CrypticExons.bed ]; then
         bedtools multicov -bed ${DEXSeqFolder}/\$comparison/${dataset}_\${comparison}_CrypticExons.bed -bams $bam_list -split > ${DEXSeqFolder}/\$comparison/${dataset}_\${comparison}_SJ_analysis.bed 
-        echo -e \"chr\tstart\tend\tgene.id\tstrand\tintron.id\tlog2FC\tFDR\t$sample_list\" > ${DEXSeqFolder}/\$comparison/header       
+        echo -e "chr\tstart\tend\tgene.id\tstrand\tintron.id\tlog2FC\tFDR\t$sample_list" > ${DEXSeqFolder}/\$comparison/header       
         cat ${DEXSeqFolder}/\$comparison/header ${DEXSeqFolder}/\$comparison/${dataset}_\${comparison}_SJ_analysis.bed > tmp 
         mv tmp ${DEXSeqFolder}/\$comparison/${dataset}_\${comparison}_SJ_analysis.bed  
     fi
 done
-" > "$jobscript"
+EOF
 
-        echo "$jobscript" >> "$Step4_master_jobscript"
+        jobs="$jobs $jobscript"
     done
 
-    echo "\"
-script=\$(echo \$jobs | cut -f\$SLURM_ARRAY_TASK_ID -d \" \")
+    echo "jobs=($jobs)
+script=\${jobs[\$((SLURM_ARRAY_TASK_ID-1))]}
 bash \$script
 " >> "$Step4_master_jobscript"
     echo "creating job scripts for DEXSeq testing"
@@ -426,9 +429,9 @@ module load R
 
 if [[ \"\$SLURM_ARRAY_TASK_ID\" == \"1\" ]]; then
     echo \"Step4b started at \$(date +%H:%M:%S)\" >> $report_file
-fi
-jobs=\"" > "$Step4b_master_jobscript"
+fi" > "$Step4b_master_jobscript"
 
+    jobs_4b=""
     for dataset in $(awk 'NR > 1 {print $3}' "$support" | uniq); do
         DEXSeqFolder="${results}/${dataset}/strict_${strict_num}/dexseq"
         if [ ! -e "$DEXSeqFolder" ]; then
@@ -459,11 +462,11 @@ jobs=\"" > "$Step4b_master_jobscript"
                 echo "${Rbin}script ${R_splice_junction_analyzer} --support.frame ${support_frame} --code ${dataset} --species $species --condition.names ${condition_names} --dexseq.res ${dexseq_res} --outFolder ${outFolder} > ${error_file} 2>&1" >> "$jobscript"
             done
         fi
-        echo "$jobscript" >> "$Step4b_master_jobscript"
+        jobs_4b="$jobs_4b $jobscript"
     done
 
-    echo "\"
-script=\$(echo \$jobs | cut -f\$SLURM_ARRAY_TASK_ID -d \" \")
+    echo "jobs=(\$jobs_4b)
+script=\${jobs[\$((SLURM_ARRAY_TASK_ID-1))]}
 bash \$script
 " >> "$Step4b_master_jobscript"
 fi
@@ -491,9 +494,9 @@ module load R
 
 if [[ \"\$SLURM_ARRAY_TASK_ID\" == \"1\" ]]; then
     echo \"Step4c started at \$(date +%H:%M:%S)\" >> $report_file
-fi
-jobs=\"" > "$Step4c_master_jobscript"
+fi" > "$Step4c_master_jobscript"
 
+    jobs_4c=""
     for dataset in $(awk 'NR > 1 {print $3}' "$support" | uniq); do
         SJAnalysisFolder="${results}/${dataset}/splice_junction_analysis"
         outFolder="${results}/${dataset}"
@@ -514,11 +517,11 @@ jobs=\"" > "$Step4c_master_jobscript"
                 echo "${Rbin}script ${R_functional_enrichment} --support.frame ${support_frame} --code ${dataset} --species $species --condition.names ${condition_names} --outFolder ${outFolder} > ${error_file} 2>&1" >> "$jobscript"
             done
         fi
-        echo "$jobscript" >> "$Step4c_master_jobscript"
+        jobs_4c="$jobs_4c $jobscript"
     done
 
-    echo "\"
-script=\$(echo \$jobs | cut -f\$SLURM_ARRAY_TASK_ID -d \" \")
+    echo "jobs=(\$jobs_4c)
+script=\${jobs[\$((SLURM_ARRAY_TASK_ID-1))]}
 bash \$script
 " >> "$Step4c_master_jobscript"
 fi
@@ -548,9 +551,9 @@ module load R
 
 if [[ \"\$SLURM_ARRAY_TASK_ID\" == \"1\" ]]; then
     echo \"Step5 started at \$(date +%H:%M:%S)\" >> $report_file
-fi
-jobs=\"" > "$Step5_master_jobscript"
+fi" > "$Step5_master_jobscript"
 
+    jobs_5=""
     for dataset in $(awk 'NR > 1 {print $3}' "$support" | uniq); do
         outFolder="${results}/${dataset}/expression"
         mkdir -p "$outFolder"
@@ -574,7 +577,8 @@ jobs=\"" > "$Step5_master_jobscript"
         awk -v dataset="$dataset" 'BEGIN{OFS="\t"} NR == 1 {print $0} $3 == dataset {print $0}' "$support" > "$support_frame"
         Rscript "${R_support_chopper}" "${support_frame}"
 
-        echo "#!/bin/bash
+        cat << EOF > "$jobscript"
+#!/bin/bash
 for countfile in \$(ls $dexseq_counts); do 
     awk '\$1 !~ /i/' ${dexseq_counts}/\$countfile > $new_countFolder/\$countfile
 done
@@ -583,13 +587,13 @@ cat ${clusterFolder}/R/prepare_counts_${dataset}.out >> $report_file
 
 ${Rbin}script ${deseqFinalProcessR} --keep.sex ${keepSex} --support.frame ${support_frame} --keep.dups ${keepDups} --code ${dataset} --annotation.file ${annotation_file} --iFolder ${outFolder} > ${clusterFolder}/R/deseq_${dataset}.out 2>&1
 cat ${clusterFolder}/R/deseq_${dataset}.out >> $report_file
-" > "$jobscript"
+EOF
 
-        echo "$jobscript" >> "$Step5_master_jobscript"
+        jobs_5="$jobs_5 $jobscript"
     done
 
-    echo "\"
-script=\$(echo \$jobs | cut -f\$SLURM_ARRAY_TASK_ID -d \" \")
+    echo "jobs=(\$jobs_5)
+script=\${jobs[\$((SLURM_ARRAY_TASK_ID-1))]}
 bash \$script
 " >> "$Step5_master_jobscript"
 fi

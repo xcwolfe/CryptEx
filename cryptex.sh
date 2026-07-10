@@ -298,12 +298,12 @@ bash \"\$TARGET_SCRIPT\"
 
         echo "#!/bin/bash
 # Execute counting and save the raw file natively
-python $pycount --stranded no -p ${paired_val} -f bam -r pos $GFF $bam ${output}
+python \$pycount --stranded no -p \${paired_val} -f bam -r pos \$GFF \$bam \${output}
 
-# Immediately strip out the 2-column HTSeq summary rows in-place
-sed -i '/^_[a-z]/d' ${output}
+# Immediately strip out the 2-column HTSeq summary rows in-place (escaped for nested echoes)
+sed -i '/^_[a-z]/d' \${output}
 
-echo "Step 3 finished for $sample at \$(date +%H:%M:%S)" >> $report_file 
+echo "Step 3 finished for \$sample at \$(date +%H:%M:%S)" >> \$report_file 
 " > "$Step3_sample_jobscript"
         
         echo "$Step3_sample_jobscript" >> "$Step3_taskfile"

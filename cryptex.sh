@@ -83,6 +83,9 @@ if [ -z "${oFolder:-}" ]; then
     oFolder="/home/zw529/donglab/pipelines/modules/rnaseq/bin/CryptEx"
 fi
 
+# --- STRICT DYNAMIC TISSUE EXTRACTION FROM SUPPORT PATH ---
+tissue=$(echo "$support" | sed -E 's|.*/CryptEx/([^/]+).*|\1|')
+
 results="${oFolder}/${protein}_${species}"
 reference="/home/zw529/donglab/pipelines/modules/rnaseq/bin/CryptEx/reference"
 clusterFolder="${results}/cluster"
@@ -308,6 +311,9 @@ CLEAN_GFF="${GFF}.filtered.gff"
 awk -F'\t' 'BEGIN{OFS="\t"} \$4 <= \$5' "${GFF}" > "\${CLEAN_GFF}"
 
 # Execute read count framework using filtered annotation mapping rules
+# Define the data target output path dynamically using the evaluated tissue string
+output="/home/zw529/donglab/data/target_ALS/CryptEx/${tissue}/${protein}_${species}/${tissue}/counts/${sample}_counts.txt"
+
 if python $pycount --stranded no -p ${paired_val} -f bam -r pos "\${CLEAN_GFF}" "$bam" "\${output}.tmp"; then
     grep -v "^_" "\${output}.tmp" > "\${output}"
     rm -f "\${output}.tmp"

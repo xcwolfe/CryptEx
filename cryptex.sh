@@ -265,7 +265,8 @@ if [[ "$read_counter" = "yes" ]]; then
 #SBATCH --job-name=$Step3_jobID
 #SBATCH --array=1-${step3_num}%30
 
-module load HTSeq
+# Load modern foss environment including HTSeq framework dependencies
+module load HTSeq/2.0.9-foss-2024a
 
 if [[ \"\$SLURM_ARRAY_TASK_ID\" == \"1\" ]]; then
     echo \"Step3 started at \$(date +%H:%M:%S)\" >> $report_file
@@ -285,12 +286,14 @@ bash \"\$TARGET_SCRIPT\"
         info_table="${oFolder}/support/${protein}_${species}_info.tab"
         if [ -e "$info_table" ]; then
             paired_val=$(awk -v d="$dataset" '\$1==d {print \$2}' "$info_table")
+            # Default fallback to "no" if unstranded, otherwise uses structured flag
             stranded_val=$(awk -v d="$dataset" '\$1==d {print \$3}' "$info_table")
         else
             paired_val=$paired
             stranded_val=$stranded
         fi
 
+        # Determine structural folder and jobscript tags dynamically based on strict settings
         countFolder="${results}/${dataset}/counts"
         Step3_sample_jobscript="${clusterFolder}/submission/count_${dataset}_${sample}.sh"
 
@@ -299,23 +302,33 @@ bash \"\$TARGET_SCRIPT\"
             Step3_sample_jobscript="${clusterFolder}/submission/count_${dataset}_${sample}_strict_${strict_num}.sh"
         fi        
         output="${countFolder}/${sample}_dexseq_counts.txt"
-        mkdir -p "$countFolder"
 
-        # Explicit injection of programmatic GFF filtering and safe execution bounds
+        # Explicit injection of programmatic GFF filtering, chromosome mapping, and safe execution bounds
         cat << EOF > "$Step3_sample_jobscript"
 #!/bin/bash
 set -e
 
-# Systematically handle and exclude malformed coordinates on-the-fly where Start > End
+# Pre-generate target storage folders explicitly to avoid FileNotFoundError downstream
+mkdir -p "\$(dirname "${output}")"
+mkdir -p "${countFolder}"
+
+# 1. Systematically drop lines where Start > End
+# 2. Map pure numeric/ensembl chromosomes to UCSC "chr" structures to resolve empty matching bugs
 CLEAN_GFF="${GFF}.filtered.gff"
-awk -F'\t' 'BEGIN{OFS="\t"} \$4 <= \$5' "${GFF}" > "\${CLEAN_GFF}"
+awk -F'\t' 'BEGIN{OFS="\t"} {
+    if (\$4 <= \$5) {
+        if (\$1 ~ /^[0-9XY]+\$/) {
+            \$1 = "chr" \$1
+        } else if (\$1 == "MT") {
+            \$1 = "chrM"
+        }
+        print \$0
+    }
+}' "${GFF}" > "\${CLEAN_GFF}"
 
 # Execute read count framework using filtered annotation mapping rules
-# Define the data target output path dynamically using the evaluated tissue string
-output="/home/zw529/donglab/data/target_ALS/CryptEx/${tissue}/${protein}_${species}/${tissue}/counts/${sample}_counts.txt"
-
 if python $pycount --stranded no -p ${paired_val} -f bam -r pos "\${CLEAN_GFF}" "$bam" "\${output}.tmp"; then
-    grep -v "^_" "\${output}.tmp" > "\${output}"
+    grep -v "^_" "\${output}.tmp" > "${output}"
     rm -f "\${output}.tmp"
     echo "Step 3 finished for $sample at \$(date +%H:%M:%S)" >> $report_file 
 else

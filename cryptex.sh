@@ -312,10 +312,9 @@ set -e
 mkdir -p "\$(dirname "${output}")"
 mkdir -p "${countFolder}"
 
-# 1. Systematically drop lines where Start > End
-# 2. Map pure numeric/ensembl chromosomes to UCSC "chr" structures to resolve empty matching bugs
-CLEAN_GFF="${GFF}.filtered.gff"
-awk -F'\t' 'BEGIN{OFS="\t"} {
+# Execute read count framework by streaming the cleaned GFF coordinates directly in-memory
+# Bypasses the disk completely, solving both race conditions and disk space issues!
+if python $pycount --stranded no -p ${paired_val} -f bam -r pos <(awk -F'\t' 'BEGIN{OFS="\t"} {
     if (\$4 <= \$5) {
         if (\$1 ~ /^[0-9XY]+\$/) {
             \$1 = "chr" \$1
@@ -324,10 +323,7 @@ awk -F'\t' 'BEGIN{OFS="\t"} {
         }
         print \$0
     }
-}' "${GFF}" > "\${CLEAN_GFF}"
-
-# Execute read count framework using filtered annotation mapping rules
-if python $pycount --stranded no -p ${paired_val} -f bam -r pos "\${CLEAN_GFF}" "$bam" "\${output}.tmp"; then
+}' "${GFF}") "$bam" "\${output}.tmp"; then
     grep -v "^_" "\${output}.tmp" > "${output}"
     rm -f "\${output}.tmp"
     echo "Step 3 finished for $sample at \$(date +%H:%M:%S)" >> $report_file 

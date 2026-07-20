@@ -350,7 +350,11 @@ if [ "$DEXSeq" = "yes" ] && [ "$sanity_check" = "dataset" ]; then
     if [[ "$strict" == "yes" ]]; then 
         Step4_master_jobscript="${clusterFolder}/submission/Step4_DEXSeq_${protein}_${species}_strict_${strict_num}.sh"
     fi
-    dataset_num=$(awk 'NR > 1 {print $3}' "$support" | uniq | wc -l)
+    dataset_num=$(awk 'NR > 1 {print $3}' "$support" | sort -u | wc -l)
+    
+    # Fallback to 1 if no datasets found to keep Slurm valid
+    [ "$dataset_num" -eq 0 ] && dataset_num=1
+
     Step4_jobID="Step4_${protein}_${species}"
     if [[ "$strict" == "yes" ]]; then 
         Step4_jobID="Step4_${protein}_${species}_strict_${strict_num}"
@@ -359,8 +363,8 @@ if [ "$DEXSeq" = "yes" ] && [ "$sanity_check" = "dataset" ]; then
     sample_num=$(awk 'NR > 1' "$support" | wc -l)
 
     echo "#!/bin/bash
-#SBATCH --mem=24G
-#SBATCH --time=5:00:00
+#SBATCH --mem=99G
+#SBATCH --time=12:00:00
 #SBATCH --cpus-per-task=4
 #SBATCH --output=${clusterFolder}/out/Step4_%A_%a.out
 #SBATCH --error=${clusterFolder}/error/Step4_%A_%a.err
@@ -375,7 +379,7 @@ if [[ \"\$SLURM_ARRAY_TASK_ID\" == \"1\" ]]; then
 fi" > "$Step4_master_jobscript"
 
     jobs=""
-    for dataset in $(awk 'NR > 1 {print $3}' "$support" | uniq); do
+    for dataset in $(awk 'NR > 1 {print $3}' "$support" | sort -u); do
         DEXSeqFolder="${results}/${dataset}/dexseq"
         mkdir -p "$DEXSeqFolder"
         support_frame="${DEXSeqFolder}/${dataset}_dexseq_frame.tab"
@@ -398,26 +402,32 @@ fi" > "$Step4_master_jobscript"
         fi
 
         awk -v dataset="$dataset" 'NR == 1 {print $0} $3 == dataset {print $0}' "$support" > "$support_frame"
-        bam_list=$(awk -v results="$results" -v dataset="$dataset" 'NR>1 {print results"/"dataset"/splice_extraction/"dataset"_"$1".spliced.exons.bam"}' "$support_frame" | tr '\n' '\t')
+        
+        # Build array representation for bams
+        bam_args=$(awk -v results="$results" -v dataset="$dataset" 'NR>1 {print results"/"dataset"/splice_extraction/"dataset"_" $1 ".spliced.exons.bam"}' "$support_frame")
         sample_list=$(awk 'NR>1{print $1}' "$support_frame" | tr '\n' '\t')
 
-        # Pass the filtered version of the GFF directly to R downstream processes
         cat << EOF > "$jobscript"
 #!/bin/bash
 ${Rbin}script ${dexseqFinalProcessR} --cryptic ${cryptic} --gff ${GFF}.filtered.gff --keep.sex ${keepSex} --keep.dups ${keepDups} --support.frame ${support_frame} --code ${dataset} --annotation.file ${annotation_file} --iFolder ${iFolder} > ${error_file} 2>&1
 cat ${error_file} >> ${report_file}
 
-for bam in $bam_list; do
-    samtools index \$bam
+bam_list=($bam_args)
+
+for bam in "\${bam_list[@]}"; do
+    if [ -f "\$bam" ]; then
+        samtools index "\$bam"
+    fi
 done
 
-for i in \$(ls ${DEXSeqFolder}/); do
-    comparison=\$(basename \$i)
-    if [ -e ${DEXSeqFolder}/\$comparison/${dataset}_\${comparison}_CrypticExons.bed ]; then
-        bedtools multicov -bed ${DEXSeqFolder}/\$comparison/${dataset}_\${comparison}_CrypticExons.bed -bams $bam_list -split > ${DEXSeqFolder}/\$comparison/${dataset}_\${comparison}_SJ_analysis.bed 
-        echo -e "chr\tstart\tend\tgene.id\tstrand\tintron.id\tlog2FC\tFDR\t$sample_list" > ${DEXSeqFolder}/\$comparison/header       
-        cat ${DEXSeqFolder}/\$comparison/header ${DEXSeqFolder}/\$comparison/${dataset}_\${comparison}_SJ_analysis.bed > tmp 
-        mv tmp ${DEXSeqFolder}/\$comparison/${dataset}_\${comparison}_SJ_analysis.bed  
+for i in \$(ls "${DEXSeqFolder}/" 2>/dev/null); do
+    comparison=\$(basename "\$i")
+    target_bed="${DEXSeqFolder}/\$comparison/${dataset}_\${comparison}_CrypticExons.bed"
+    if [ -e "\$target_bed" ]; then
+        bedtools multicov -bed "\$target_bed" -bams "\${bam_list[@]}" -split > "${DEXSeqFolder}/\$comparison/${dataset}_\${comparison}_SJ_analysis.bed" 
+        echo -e "chr\tstart\tend\tgene.id\tstrand\tintron.id\tlog2FC\tFDR\t$sample_list" > "${DEXSeqFolder}/\$comparison/header"       
+        cat "${DEXSeqFolder}/\$comparison/header" "${DEXSeqFolder}/\$comparison/${dataset}_\${comparison}_SJ_analysis.bed" > tmp 
+        mv tmp "${DEXSeqFolder}/\$comparison/${dataset}_\${comparison}_SJ_analysis.bed"  
     fi
 done
 EOF
@@ -437,11 +447,12 @@ fi
 ############################
 if [[ "$splice_junction_analyzer" == "yes" ]]; then
     Step4b_master_jobscript="${clusterFolder}/submission/Step4b_SJ_analyzer_${protein}_${species}.sh"
-    dataset_num=$(awk 'NR > 1 {print $3}' "$support" | uniq | wc -l)
+    dataset_num=$(awk 'NR > 1 {print $3}' "$support" | sort -u | wc -l)
+    [ "$dataset_num" -eq 0 ] && dataset_num=1
     Step4b_jobID="Step4b_${protein}_${species}"
 
     echo "#!/bin/bash
-#SBATCH --mem=24G
+#SBATCH --mem=64G
 #SBATCH --time=12:00:00
 #SBATCH --cpus-per-task=1
 #SBATCH --output=${clusterFolder}/out/Step4b_%A_%a.out
@@ -457,7 +468,7 @@ if [[ \"\$SLURM_ARRAY_TASK_ID\" == \"1\" ]]; then
 fi" > "$Step4b_master_jobscript"
 
     jobs_4b=""
-    for dataset in $(awk 'NR > 1 {print $3}' "$support" | uniq); do
+    for dataset in $(awk 'NR > 1 {print $3}' "$support" | sort -u); do
         DEXSeqFolder="${results}/${dataset}/strict_${strict_num}/dexseq"
         if [ ! -e "$DEXSeqFolder" ]; then
             DEXSeqFolder="${results}/${dataset}/dexseq"
@@ -469,8 +480,13 @@ fi" > "$Step4b_master_jobscript"
         echo "#!/bin/bash
 # SPLICE JUNCTION ANALYSIS FOR ${dataset}" > "$jobscript"
 
-        if [ -d "${results}/${dataset}/strict_500/dexseq/" ]; then
-            for i in $(ls "${results}/${dataset}/strict_500/dexseq/"); do
+        target_dexseq_dir="${results}/${dataset}/strict_500/dexseq/"
+        if [ ! -d "$target_dexseq_dir" ]; then
+            target_dexseq_dir="${results}/${dataset}/dexseq/"
+        fi
+
+        if [ -d "$target_dexseq_dir" ]; then
+            for i in $(ls "$target_dexseq_dir"); do
                 if [[ "$i" =~ .*[\.][a-z]+ ]]; then continue; fi
                 condition_names=$(basename "$i")
                 
@@ -490,7 +506,7 @@ fi" > "$Step4b_master_jobscript"
         jobs_4b="$jobs_4b $jobscript"
     done
 
-    echo "jobs=(\$jobs_4b)
+    echo "jobs=($jobs_4b)
 script=\${jobs[\$((SLURM_ARRAY_TASK_ID-1))]}
 bash \$script
 " >> "$Step4b_master_jobscript"
@@ -501,11 +517,12 @@ fi
 ##################################
 if [[ "$functional_enrichment" == "yes" ]]; then
     Step4c_master_jobscript="${clusterFolder}/submission/Step4c_Functional_Enrichment_${protein}_${species}.sh"
-    dataset_num=$(awk 'NR > 1 {print $3}' "$support" | uniq | wc -l)
+    dataset_num=$(awk 'NR > 1 {print $3}' "$support" | sort -u | wc -l)
+    [ "$dataset_num" -eq 0 ] && dataset_num=1
     Step4c_jobID="Step4c_${protein}_${species}"
 
     echo "#!/bin/bash
-#SBATCH --mem=24G
+#SBATCH --mem=64G
 #SBATCH --time=12:00:00
 #SBATCH --cpus-per-task=1
 #SBATCH --output=${clusterFolder}/out/Step4c_%A_%a.out
@@ -521,7 +538,7 @@ if [[ \"\$SLURM_ARRAY_TASK_ID\" == \"1\" ]]; then
 fi" > "$Step4c_master_jobscript"
 
     jobs_4c=""
-    for dataset in $(awk 'NR > 1 {print $3}' "$support" | uniq); do
+    for dataset in $(awk 'NR > 1 {print $3}' "$support" | sort -u); do
         SJAnalysisFolder="${results}/${dataset}/splice_junction_analysis"
         outFolder="${results}/${dataset}"
         jobscript="${clusterFolder}/submission/functional_enrichment_${dataset}.sh"
@@ -529,8 +546,13 @@ fi" > "$Step4c_master_jobscript"
         echo "#!/bin/bash
 # ENRICHMENT ANALYSIS FOR ${dataset}" > "$jobscript"
 
-        if [ -d "${results}/${dataset}/strict_500/dexseq/" ]; then
-            for i in $(ls "${results}/${dataset}/strict_500/dexseq/"); do
+        target_dexseq_dir="${results}/${dataset}/strict_500/dexseq/"
+        if [ ! -d "$target_dexseq_dir" ]; then
+            target_dexseq_dir="${results}/${dataset}/dexseq/"
+        fi
+
+        if [ -d "$target_dexseq_dir" ]; then
+            for i in $(ls "$target_dexseq_dir"); do
                 if [[ "$i" =~ .*[\.][a-z]+ ]]; then continue; fi
                 condition_names=$(basename "$i")
                 SJAnalysis_res="${SJAnalysisFolder}/${dataset}_${condition_names}_splicing_analysis.tab"
@@ -544,7 +566,7 @@ fi" > "$Step4c_master_jobscript"
         jobs_4c="$jobs_4c $jobscript"
     done
 
-    echo "jobs=(\$jobs_4c)
+    echo "jobs=($jobs_4c)
 script=\${jobs[\$((SLURM_ARRAY_TASK_ID-1))]}
 bash \$script
 " >> "$Step4c_master_jobscript"

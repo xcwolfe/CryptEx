@@ -259,13 +259,12 @@ if [[ "$read_counter" = "yes" ]]; then
     fi
 
     echo "#!/bin/bash
-#SBATCH --mem=24G
+#SBATCH --mem=64G
 #SBATCH --time=16:00:00
 #SBATCH --cpus-per-task=2
 #SBATCH --job-name=$Step3_jobID
-#SBATCH --array=1-${step3_num}%30
+#SBATCH --array=1-${step3_num}%40
 
-# Load modern foss environment including HTSeq framework dependencies
 module load HTSeq/2.0.9-foss-2024a
 
 if [[ \"\$SLURM_ARRAY_TASK_ID\" == \"1\" ]]; then
@@ -389,10 +388,12 @@ fi" > "$Step4_master_jobscript"
         keepDups=FALSE
         cryptic=TRUE
         iFolder="${results}/${dataset}"
+        countFolder="${results}/${dataset}/counts"
         error_file="${clusterFolder}/R/dexseq_${dataset}.out"
 
         if [ "$strict" = "yes" ]; then
             iFolder="${results}/${dataset}/strict_${strict_num}"
+            countFolder="${results}/${dataset}/strict_${strict_num}/counts"
             DEXSeqFolder="${iFolder}/dexseq"
             mkdir -p "$DEXSeqFolder"
             GFF="${results}/${dataset}/GFF/${protein}_${species}_${dataset}.strict.${strict_num}.total.cryptics.gff"
@@ -401,9 +402,22 @@ fi" > "$Step4_master_jobscript"
             error_file="${clusterFolder}/R/dexseq_${dataset}_strict_${strict_num}.out"
         fi
 
-        awk -v dataset="$dataset" 'NR == 1 {print $0} $3 == dataset {print $0}' "$support" > "$support_frame"
+        # Header for dataset support frame
+        awk 'NR == 1 {print $0}' "$support" > "$support_frame"
+
+        # Validate existence and non-zero size of dexseq_count files before including in Step 4
+        awk -v dataset="$dataset" 'NR > 1 && $3 == dataset {print $0}' "$support" | while read -r line; do
+            s_name=$(echo "$line" | awk '{print $1}')
+            expected_count="${countFolder}/${s_name}_dexseq_counts.txt"
+
+            if [[ -s "$expected_count" ]]; then
+                echo "$line" >> "$support_frame"
+            else
+                echo "Sample ${s_name} was not included for step 4 due to failure in read counting" >> "$report_file"
+            fi
+        done
         
-        # Build array representation for bams
+        # Build array representation for bams dynamically based on valid support_frame samples
         bam_args=$(awk -v results="$results" -v dataset="$dataset" 'NR>1 {print results"/"dataset"/splice_extraction/"dataset"_" $1 ".spliced.exons.bam"}' "$support_frame")
         sample_list=$(awk 'NR>1{print $1}' "$support_frame" | tr '\n' '\t')
 
@@ -459,7 +473,7 @@ if [[ "$splice_junction_analyzer" == "yes" ]]; then
 #SBATCH --error=${clusterFolder}/error/Step4b_%A_%a.err
 #SBATCH --job-name=${Step4b_jobID}
 #SBATCH --chdir=${oFolder}
-#SBATCH --array=1-${dataset_num}%20
+#SBATCH --array=1-${dataset_num}%30
 
 module load R
 

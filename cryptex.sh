@@ -1,6 +1,6 @@
 #!/bin/bash
 # CRYPTEX - Optimized for Yale Bouchet HPC Cluster (Slurm)
-# Jack Humphrey / UCL / Adapted for Dong Lab Pipeline Standard
+# Jack Humphrey / UCL / Adapted for Dong Lab Pipeline
 set -euo pipefail
 
 ## Default base variables
@@ -120,7 +120,7 @@ if [ ! -e "$intron_tweaked_GFF" ]; then
 fi
 intron_GFF="$intron_tweaked_GFF"
 
-## Central Log File Allocation
+# Central Log File Allocation
 report_file="${results}/report.txt"
 if [[ "$strict" == "yes" ]]; then
     report_file="${results}/report_strict${strict_num}.txt"
@@ -162,7 +162,7 @@ if [[ "$splice_extractor" == "yes" ]]; then
 #SBATCH --time=23:00:00
 #SBATCH --cpus-per-task=1
 #SBATCH --job-name=${Step1_jobID}
-#SBATCH --array=1-${sample_num_1}%30
+#SBATCH --array=1-${sample_num_1}%40
 
 if [[ \"\$SLURM_ARRAY_TASK_ID\" == \"1\" ]]; then
     echo \"Step1 started at \$(date +%H:%M:%S)\" >> $report_file
@@ -259,8 +259,8 @@ if [[ "$read_counter" = "yes" ]]; then
     fi
 
     echo "#!/bin/bash
-#SBATCH --mem=64G
-#SBATCH --time=16:00:00
+#SBATCH --mem=60G
+#SBATCH --time=14:00:00
 #SBATCH --cpus-per-task=2
 #SBATCH --job-name=$Step3_jobID
 #SBATCH --array=1-${step3_num}%40
@@ -284,9 +284,9 @@ bash \"\$TARGET_SCRIPT\"
 
         info_table="${oFolder}/support/${protein}_${species}_info.tab"
         if [ -e "$info_table" ]; then
-            paired_val=$(awk -v d="$dataset" '\$1==d {print \$2}' "$info_table")
+            paired_val=$(awk -v d="$dataset" '$1==d {print $2}' "$info_table")
             # Default fallback to "no" if unstranded, otherwise uses structured flag
-            stranded_val=$(awk -v d="$dataset" '\$1==d {print \$3}' "$info_table")
+            stranded_val=$(awk -v d="$dataset" '$1==d {print $3}' "$info_table")
         else
             paired_val=$paired
             stranded_val=$stranded
@@ -322,13 +322,19 @@ if python $pycount --stranded no -p ${paired_val} -f bam -r pos <(awk -F'\t' 'BE
         }
         print \$0
     }
-}' "${GFF}") "$bam" "\${output}.tmp"; then
-    grep -v "^_" "\${output}.tmp" > "${output}"
-    rm -f "\${output}.tmp"
-    echo "Step 3 finished for $sample at \$(date +%H:%M:%S)" >> $report_file 
+}' "${GFF}") "$bam" "${output}.tmp"; then
+    if [[ -s "${output}.tmp" ]]; then
+        grep -v "^_" "${output}.tmp" > "${output}"
+        rm -f "${output}.tmp"
+        echo "Step 3 finished for $sample at \$(date +%H:%M:%S)" >> $report_file 
+    else
+        echo "ERROR: dexseq_count.py completed with status 0, but output temp file was missing or empty for sample $sample" >&2
+        rm -f "${output}.tmp" "${output}"
+        exit 1
+    fi
 else
     echo "ERROR: dexseq_count.py failed explicitly on sample $sample" >&2
-    rm -f "\${output}.tmp"
+    rm -f "${output}.tmp" "${output}"
     exit 1
 fi
 EOF

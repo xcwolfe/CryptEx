@@ -53,32 +53,40 @@ fi
 ## BED-4 (from -a) + BED-6 (from -b) sets the reference token name to column 8 and strand to column 10.
 bedtools intersect -a ${output}.merged.bed -b ${intron_BED} -wb | awk 'BEGIN{OFS="\t"}{print $1,$2,$3,$4,$10,$8}' | sort -k1,1V -k2,2n > ${output}.cryptics.merged.bed
 
-# Clear old metadata run iterations if they exist
-if [ -e ${output}.merged.annotated.bed ]; then rm ${output}.merged.annotated.bed; fi
-touch ${output}.merged.annotated.bed
-
 ## Create unique list of gene/strand tags from column 6 to iterate through
 cat ${output}.cryptics.merged.bed | awk '{print $6}' | sort -V | uniq > ${output}.unique_gene_introns.tab
+
+# Create clean temporary working directory for thread-safe output
+TMP_DIR="${output}_tmp_parts"
+rm -rf "$TMP_DIR"
+mkdir -p "$TMP_DIR"
 
 date
 # N is the number of allowed concurrently running forks
 N=8
+i=0
 
 for entry in $(cat ${output}.unique_gene_introns.tab); do 
     ((i=i%N)); ((i++==0)) && wait
-    grep -F "$entry" ${output}.cryptics.merged.bed | awk 'BEGIN{OFS="\t"; s=1}{print $1,$2,$3,$4,$5,$6"__i"s; s+=1}' >> ${output}.merged.annotated.bed &
+    awk -v target="$entry" 'BEGIN{OFS="\t"; s=1} $6 == target {print $1,$2,$3,$4,$5,$6"__i"s; s+=1}' ${output}.cryptics.merged.bed > "${TMP_DIR}/${entry}.bed" &
 done
 wait
 date
 
+# Combine thread-safe temp files into annotated bed
+cat "${TMP_DIR}"/*.bed > ${output}.merged.annotated.bed
+rm -rf "$TMP_DIR"
+
 ## Convert into a valid DEXSeq-ready GFF file, splitting tokens on double-underscores
 cat ${output}.merged.annotated.bed | awk 'BEGIN{OFS="\t"}{
     split($6, a, "__");
-    print $1, "STAR_hg38", "exonic_part", $2, $3, ".", $5, ".", "transcripts \"cryptic_exon\"; exonic_part_number \""a[4]"\"; gene_id \""a[1]"\""
+    gene = a[1];
+    part = (a[2] != "" ? a[2] : "i1");
+    print $1, "STAR_hg38", "exonic_part", $2, $3, ".", $5, ".", "transcripts \"cryptic_exon\"; exonic_part_number \"" part "\"; gene_id \"" gene "\""
 }' | sort -k1,1V -k4,4n > ${output}.cryptics.gff
 
-## Place parsed cryptic exons within the reference background total exon GFF layout
-cat ${output}.cryptics.gff ${exon_GFF} | sort -k1,1V -k4,4n -k5,5n | awk '$14 ~ /ENS/' > ${output}.total.cryptics.gff
+## Merge cryptic GFF with background exon GFF safely by checking the gene_id attribute specifically
+cat ${output}.cryptics.gff ${exon_GFF} | sort -k1,1V -k4,4n -k5,5n | awk 'BEGIN{FS=OFS="\t"} $9 ~ /gene_id "ENSG/ || $9 ~ /gene_id "NOVEL/' > ${output}.total.cryptics.gff
 
 echo "✅ Step 2 Complete. Output saved to: ${output}.total.cryptics.gff"
 exit 0
